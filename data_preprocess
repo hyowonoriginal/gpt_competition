@@ -1,0 +1,156 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+# sample_submission_csv = "sftp://nlpgpu7@163.239.39.34/home/nlpgpu7/ellt/sample_submission.csv"
+# test_csv = "sftp://nlpgpu7@163.239.39.34/home/nlpgpu7/ellt/test.csv"
+# train_csv = "sftp://nlpgpu7@163.239.39.34/home/nlpgpu7/ellt/train.csv"
+
+sample_submission_csv = "sample_submission.csv"
+test_csv = "test.csv"
+train_csv = "train.csv"
+
+import os, gc
+from tqdm.auto import tqdm
+from datetime import datetime, timezone, timedelta
+
+import pandas as pd
+import numpy as np
+import datasets
+
+import re
+import requests
+import csv
+
+import torch
+from torch.utils.data import DataLoader,Dataset
+
+import transformers
+from transformers import AutoTokenizer, AutoModelForCausalLM
+
+from hanspell import spell_checker
+
+
+train_df = pd.read_csv(train_csv)
+
+class TextPreprocess:
+    def __init__(self):
+        pass
+    def del_space_after_line_break(self, text):
+        p = re.compile(r'\n\s+')
+        return p.sub('', text)
+    def add_space_between_words(self, text):
+        p = re.compile(r'(?<=[a-zA-Z가-힣])\.(?=[a-zA-Z가-힣])')
+        return p.sub('. ', text)
+    def del_email_address(self, text):
+        p = re.compile(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.([a-z|A-Z]{2,})?')
+        return p.sub('', text)
+    def del_space_in_start_of_str(self, text):
+        p = re.compile(r'^\s+')
+        return p.sub('', text)
+    def del_space_in_end_of_str(self, text):
+        p = re.compile(r'\s+$')
+        return p.sub('', text)
+    def change_parthesis_to_space(self, text):
+        p = re.compile(r'[\(\)]')
+        return p.sub(' ', text)
+    def del_meaningless_symbol(self, text):
+        p = re.compile(r'[^가-힣A-Za-z0-9\:\!\?\.\,\$\%\&\·\s]')
+        return p.sub('', text)
+    def del_multiple_space(self, text):
+        p = re.compile(r'\s+')
+        return p.sub(' ', text)
+    def del_quotation_mark(self, text):
+        p = re.compile(r'\"')
+        return p.sub('', text)
+    def change_closed_parthesis(self, text):
+        p = re.compile(r'\]')
+        return p.sub('(이)가 말했다: ', text)
+    def del_modu_speech(self, text):
+        p = re.compile(r'1. 모두 발언')
+        return p.sub('', text)
+    def del_qna(self, text):
+        p = re.compile(r'2. 질문 답변')
+        return p.sub('', text)
+    def spell_check(self, text):
+        spelled_text = spell_checker.check(text)
+        return spelled_text.checked
+    def total_preprocess(self, text):
+        preprocessed_text = self.del_space_after_line_break(text)
+        preprocessed_text = self.add_space_between_words(preprocessed_text)
+        preprocessed_text = self.del_email_address(preprocessed_text)
+        preprocessed_text = self.del_space_in_start_of_str(preprocessed_text)
+        preprocessed_text = self.del_space_in_end_of_str(preprocessed_text)
+        preprocessed_text = self.change_parthesis_to_space(preprocessed_text)
+        preprocessed_text = self.del_meaningless_symbol(preprocessed_text)
+        preprocessed_text = self.del_multiple_space(preprocessed_text)
+        preprocessed_text = self.del_quotation_mark(preprocessed_text)
+        preprocessed_text = self.change_closed_parthesis(preprocessed_text)
+        preprocessed_text = self.del_modu_speech(preprocessed_text)
+        preprocessed_text = self.del_qna(preprocessed_text)
+        preprocessed_text = self.spell_check(preprocessed_text)
+        return preprocessed_text
+
+
+# In[213]:
+
+
+train_df = pd.read_csv(train_csv)
+
+
+# In[214]:
+
+
+preprocessed_text_list = []
+
+
+# In[215]:
+
+
+news_df = train_df.iloc[:10800, 1]
+minute_df = train_df.iloc[10800:24400, 1]
+speech_df = train_df.iloc[24400:, 1]
+
+
+# In[216]:
+
+
+tp = TextPreprocess()
+
+
+# In[217]:
+
+
+for i in range(len(news_df)):
+    text = str(news_df.iloc[i])
+    preprocessed_text = tp.total_preprocess(text)
+    preprocessed_text_list.append(preprocessed_text)
+
+
+# In[218]:
+
+
+for i in range(len(minute_df)):
+    text = str(minute_df.iloc[i])
+    preprocessed_text = tp.total_preprocess(text)
+    preprocessed_text_list.append(preprocessed_text)
+
+
+# In[219]:
+
+
+for i in range(len(speech_df)):
+    text = str(speech_df.iloc[i])
+    preprocessed_text = tp.total_preprocess(text)
+    preprocessed_text_list.append(preprocessed_text)
+
+
+# In[220]:
+
+
+train_df.iloc[:, 1] = preprocessed_text_list
+
+
+# In[221]:
+
+
+train_df.to_csv('preprocessed_train.csv', index=False)
